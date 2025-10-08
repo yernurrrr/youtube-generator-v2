@@ -1,11 +1,12 @@
 import streamlit as st
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai.errors import APIError
 
 # --- КОНФИГУРАЦИЯ API И МОДЕЛИ ---
-# Ключ GEMINI_API_KEY будет получен из Streamlit Secrets
+# Ключ GEMINI_API_KEY будет получен из Streamlit Secrets (или из локального окружения)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL_NAME = "gemini-1.5-flash"
+MODEL_NAME = "gemini-2.5-flash"
 FREE_LIMIT = 5 # Константа для лимита бесплатных запросов
 
 def generate_titles(prompt_text, style):
@@ -13,8 +14,7 @@ def generate_titles(prompt_text, style):
     if not GEMINI_API_KEY:
         return "Ошибка: Не найден GEMINI_API_KEY. Пожалуйста, установите переменную окружения (на Streamlit Cloud)."
 
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel(MODEL_NAME)
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
     # Инструкции (системный промпт), которые делают модель "экспертом"
     system_instruction = (
@@ -27,10 +27,16 @@ def generate_titles(prompt_text, style):
     )
 
     try:
-        response = model.generate_content(full_prompt)
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=full_prompt,
+            config={"system_instruction": system_instruction}
+        )
         return response.text
+    except APIError as e:
+        return f"Произошла ошибка API: {e}"
     except Exception as e:
-        return f"Произошла ошибка: {e}"
+        return f"Произошла непредвиденная ошибка: {e}"
 
 # --- ОСНОВНАЯ ЛОГИКА STREAMLIT ---
 
@@ -41,7 +47,7 @@ st.title("🔥 Генератор заголовков для YouTube (MVP)")
 if 'count' not in st.session_state:
     st.session_state.count = 0
 
-# Вывод текущего статуса и ссылки на монетизацию
+# Вывод текущего статуса и ссылки на монетизацию (обновляется при каждом новом запросе)
 st.markdown(f"**Ваш статус:** Бесплатный. 🔑 **Осталось запросов:** {FREE_LIMIT - st.session_state.count}")
 st.markdown("---")
 st.markdown(
@@ -59,10 +65,11 @@ style_selection = st.selectbox(
     key="style"
 )
 
-# 3. Пустой контейнер для результатов
+# 3. Пустой контейнер для результатов. Это предотвратит дублирование результатов.
 results_placeholder = st.empty()
 
 if st.button("Сгенерировать 🚀"):
+
     # --- ЛОГИКА ПРОВЕРКИ ЛИМИТА ---
     if st.session_state.count >= FREE_LIMIT:
         results_placeholder.error(
@@ -74,13 +81,16 @@ if st.button("Сгенерировать 🚀"):
     else:
         # Если лимит не исчерпан, выполняем генерацию
         with st.spinner("Генерация... Это может занять несколько секунд."):
+
             # Вызов функции генерации
             result_text = generate_titles(text_input, style_selection)
 
-            # Отображение результата в контейнере
+            # *** ОТОБРАЖЕНИЕ РЕЗУЛЬТАТА В КОНТЕЙНЕРЕ ***
             with results_placeholder.container():
                 st.success("✅ Готово! Ваши заголовки:")
                 st.markdown(result_text)
 
-            # Увеличение счетчика после успешной генерации
+            # *** УВЕЛИЧЕНИЕ СЧЕТЧИКА ПОСЛЕ УСПЕШНОЙ ГЕНЕРАЦИИ ***
             st.session_state.count += 1
+            # Здесь НЕТ st.rerun(), чтобы сохранить заголовки на экране.
+            # Счетчик обновится при следующей генерации.
