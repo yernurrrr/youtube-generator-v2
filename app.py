@@ -69,7 +69,6 @@ if st.button("Сгенерировать 🚀"):
 
     else:
         st.warning("Пожалуйста, введите текст для генерации заголовка")
-=======
 import streamlit as st
 import os
 from google import genai
